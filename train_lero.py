@@ -3,10 +3,11 @@ import argparse
 import os
 import json
 import socket
+from collections import defaultdict
 from multiprocessing import Pool
 
 from helper import run
-from utils import do_run_query, create_training_file, explain_query
+from utils import do_run_query, explain_query
 from config import SEP, LOG_PATH, LERO_SERVER_PORT, LERO_SERVER_HOST, LERO_SERVER_PATH, LERO_DUMP_CARD_FILE, PG_DB_PATH
 
 
@@ -19,6 +20,21 @@ class CardinalityGuidedEntity:
         return self.score
 
 
+def create_training_file(training_data_file, *latency_files):
+    pair_dict = defaultdict(lambda: [])
+
+    for latency_file in latency_files:
+        with open(latency_file, 'r') as file:
+            for _line in file.readlines():
+                key, value = _line.strip().split(SEP)
+                pair_dict[key].append(value)
+
+    training_data = [SEP.join(values) for values in pair_dict.values() if len(values) > 1]
+
+    with open(training_data_file, 'w') as f2:
+        f2.write("\n".join(training_data))
+
+
 class PgHelper:
     def __init__(self, _queries, _output_query_latency_file) -> None:
         self.queries = _queries
@@ -27,7 +43,7 @@ class PgHelper:
     def start(self, _pool_num):
         pool = Pool(_pool_num)
         for fp, q in self.queries:
-            pool.apply_async(do_run_query, args=(q, fp, [], self.output_query_latency_file, True, None, None, "pg"))
+            pool.apply_async(do_run_query, args=(q, fp, [], self.output_query_latency_file, "pg"))
         print('Waiting for all subprocesses done...')
         pool.close()
         pool.join()
@@ -93,7 +109,7 @@ class LeroHelper:
     def test_benchmark(self, output_file):
         run_args = self.get_run_args()
         for (fp, q) in self.test_queries:
-            do_run_query(q, fp, run_args, output_file, True, None, None, "lero")
+            do_run_query(q, fp, run_args, output_file, True, "lero")
 
     def get_run_args(self):
         run_args = ["SET enable_lero TO True"]
@@ -104,7 +120,7 @@ class LeroHelper:
         return run_args
 
     def run_pairwise(self, q, fp, run_args, _output_query_latency_file, exploratory_query_latency_file, pool):
-        explain_query(q, run_args)
+        explain_query(q, run_args, "EXPLAIN (COSTS FALSE, FORMAT JSON, SUMMARY) ")  # check this!!!
         policy_entities = []
         with open(self.lero_card_file_path, 'r') as file:
             lines = file.readlines()
@@ -127,7 +143,7 @@ class LeroHelper:
 
                 output_file = _output_query_latency_file if i == 0 else exploratory_query_latency_file
                 pool.apply_async(do_run_query, args=(q, fp, self.get_card_test_args(card_file_name),
-                                                     output_file, True, None, None, "lero"))
+                                                     output_file, True, "lero"))
                 i += 1
 
     def predict(self, plan):
