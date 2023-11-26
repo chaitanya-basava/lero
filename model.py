@@ -10,7 +10,7 @@ import torch.nn as nn
 import torch.optim
 from torch.utils.data import DataLoader
 
-from feature import SampleEntity, FeatureGenerator
+from pre_process import PlanNode, Preprocessor
 from TreeConvolution.tcnn import (BinaryTreeConv, DynamicPooling,
                                   TreeActivation, TreeLayerNorm)
 from TreeConvolution.util import prepare_trees
@@ -24,16 +24,16 @@ def collate_pairwise_fn(batch):
     return list(trees1), list(trees2), list(labels)
 
 
-def transformer(x: SampleEntity):
+def transformer(x: PlanNode):
     return x.get_feature()
 
 
-def left_child(x: SampleEntity):
-    return x.get_left()
+def left_child(x: PlanNode):
+    return x.get_left_child()
 
 
-def right_child(x: SampleEntity):
-    return x.get_right()
+def right_child(x: PlanNode):
+    return x.get_left_child()
 
 
 def build_trees(feature):
@@ -58,7 +58,7 @@ def generate_network(input_feature_dim):
 
 
 class LeroModelPairWise(nn.Module):
-    def __init__(self, feature_generator: Union[FeatureGenerator, None],
+    def __init__(self, feature_generator: Union[Preprocessor, None],
                  model_path: str = None, batch_size: int = 64, num_epochs: int = 100):
         super().__init__()
         self.net = None

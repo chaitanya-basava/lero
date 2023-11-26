@@ -1,5 +1,5 @@
 from model import LeroModelPairWise
-from feature import FeatureGenerator
+from pre_process import Preprocessor
 
 
 def load_pairwise_plans(path):
@@ -30,7 +30,7 @@ def get_training_pair(candidates):
 def training_pairwise(model_name, training_data_file):
     x1, x2 = load_pairwise_plans(training_data_file)
 
-    feature_generator = FeatureGenerator()
+    feature_generator = Preprocessor()
     feature_generator.fit(x1 + x2)
 
     x1, y1 = feature_generator.transform(x1)

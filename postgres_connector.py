@@ -1,13 +1,14 @@
+import math
 import json
 import configparser
 import socketserver
 from collections import defaultdict
 
 from model import LeroModelPairWise
-from feature import SCAN_TYPES, JOIN_TYPES
+from pre_process import SCAN_TYPES, JOIN_TYPES
 
 
-class LeroHandler(socketserver.BaseRequestHandler):
+class PostgresHandler(socketserver.BaseRequestHandler):
     def handle(self):
         str_buf = ""
         while True:
@@ -21,30 +22,27 @@ class LeroHandler(socketserver.BaseRequestHandler):
                 str_buf = str_buf[end_loc + len("*LERO_END*"):]
                 if json_msg:
                     try:
-                        self.handle_msg(json_msg)
+                        json_obj = json.loads(json_msg)
+                        msg_type = json_obj['msg_type']
+                        reply_msg = {}
+                        try:
+                            handler_method = getattr(self, f"_handle_{msg_type}", None)
+                            if handler_method:
+                                handler_method(json_obj, reply_msg)
+                                reply_msg['msg_type'] = "succ"
+                            else:
+                                raise Exception(f"[{msg_type}] not known")
+                        except Exception as e:
+                            reply_msg['msg_type'] = "error"
+                            reply_msg['error'] = str(e)
+                            print(e)
+
+                        self.request.sendall(bytes(json.dumps(reply_msg), "utf-8"))
+                        self.request.close()
                     except Exception as e:
                         print(str(e))
 
                     break
-
-    def handle_msg(self, json_msg):
-        json_obj = json.loads(json_msg)
-        msg_type = json_obj['msg_type']
-        reply_msg = {}
-        try:
-            handler_method = getattr(self, f"_handle_{msg_type}", None)
-            if handler_method:
-                handler_method(json_obj, reply_msg)
-                reply_msg['msg_type'] = "succ"
-            else:
-                raise Exception(f"[{msg_type}] not known")
-        except Exception as e:
-            reply_msg['msg_type'] = "error"
-            reply_msg['error'] = str(e)
-            print(e)
-
-        self.request.sendall(bytes(json.dumps(reply_msg), "utf-8"))
-        self.request.close()
 
     def _handle_init(self, json_obj, _):
         self.server.opt_state_dict[json_obj['query_id']] = OptState(
@@ -91,14 +89,14 @@ class LeroHandler(socketserver.BaseRequestHandler):
         del self.server.opt_state_dict[json_obj['query_id']]
 
 
-def generate_swing_factors(swing_factor_lower_bound=0.01, swing_factor_upper_bound=100, step=10):
-    swing_factors = set()
-    cur_swing_factor = 1
-    while cur_swing_factor <= swing_factor_upper_bound:
-        swing_factors.add(cur_swing_factor)
-        cur_swing_factor *= step
+def generate_swing_factors(swing_factor_lower_bound: float = 0.01,
+                           swing_factor_upper_bound: int = 100, step: float = 10):
+    swing_factors = {1.0}
 
-    cur_swing_factor = 1
+    num_steps_up = math.ceil(math.log(swing_factor_upper_bound, step))
+    swing_factors.update(step ** i for i in range(num_steps_up + 1))
+
+    cur_swing_factor = 1 / step
     while cur_swing_factor >= swing_factor_lower_bound:
         swing_factors.add(cur_swing_factor)
         cur_swing_factor /= step
@@ -246,7 +244,7 @@ class OptState:
 
 if __name__ == "__main__":
     config = configparser.ConfigParser()
-    config.read("server.conf")
+    config.read("connector.conf")
 
     port = int(config["port"])
     listen_on = str(config["host"])
@@ -256,7 +254,7 @@ if __name__ == "__main__":
 
     print(f"Listening on {listen_on} port {port}")
 
-    with socketserver.TCPServer((listen_on, port), LeroHandler) as server:
+    with socketserver.TCPServer((listen_on, port), PostgresHandler) as server:
         server.model = model
         server.feature_generator = model.feature_generator
         server.opt_state_dict = {}
