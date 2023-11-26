@@ -8,6 +8,15 @@ import time
 from config import CONNECTION_STR, TIMEOUT, LOG_PATH, SEP
 
 
+def read_queries(query_path):
+    queries = []
+    with open(query_path, 'r') as file:
+        for line in file.readlines():
+            query_name, query = line.strip().split(SEP)
+            queries.append((query_name, query))
+    return queries
+
+
 def encode_string(val):
     return hashlib.md5(val.encode('utf-8')).hexdigest()
 
