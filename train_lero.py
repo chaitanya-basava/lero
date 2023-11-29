@@ -7,7 +7,7 @@ from multiprocessing import Pool
 from collections import defaultdict
 
 from helper import run
-from utils import do_run_query, read_queries
+from utils import execute_queries_on_postgres, read_queries
 from config import SEP, LOG_PATH, LERO_SERVER_PORT, LERO_SERVER_HOST, LERO_SERVER_PATH, LERO_DUMP_CARD_FILE, PG_DB_PATH
 
 
@@ -96,7 +96,7 @@ class LeroExecutor:
     def test(self, output_file):
         run_args = ["SET enable_lero TO True"]
         for query_name, query in self.test_queries:
-            do_run_query(query, query_name, run_args, output_file, True, "lero")
+            execute_queries_on_postgres(query, query_name, run_args, output_file, True, "pg")
 
     def run_pairwise(self, query, query_name, pool):
         entities = []
@@ -114,9 +114,9 @@ class LeroExecutor:
                     card_file.write("\n".join(entity.card_str.strip().split(" ")))
 
                 output_file = self.output_query_latency_file if i == 0 else f"{self.output_query_latency_file}_exploratory"
-                pool.apply_async(do_run_query,
+                pool.apply_async(execute_queries_on_postgres,
                                  args=(query, query_name, ["SET lero_joinest_fname TO '" + card_file_name + "'"],
-                                       output_file, True, "lero"))
+                                       output_file, True, "pg"))
 
 
 if __name__ == "__main__":

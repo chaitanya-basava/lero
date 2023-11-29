@@ -3,7 +3,7 @@ import argparse
 from multiprocessing import Pool
 
 from config import LOG_PATH
-from utils import do_run_query, read_queries
+from utils import execute_queries_on_postgres, read_queries
 
 
 class PGExecutor:
@@ -18,13 +18,13 @@ class PGExecutor:
         print("pool_num:", pool_num)
         pool = Pool(pool_num)
         for fp, q in self.queries:
-            pool.apply_async(do_run_query, args=(q, fp, [], self.output_query_latency_file, "pg"))
+            pool.apply_async(execute_queries_on_postgres, args=(q, fp, [], self.output_query_latency_file, True, "pg"))
         print('Waiting for all subprocesses done...')
         pool.close()
         pool.join()
 
 
-if __name__ == "":
+if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--query_path", metavar="PATH", help="Load the queries")
     parser.add_argument("--output_query_latency_file", metavar="PATH")

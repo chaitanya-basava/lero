@@ -245,18 +245,19 @@ class OptState:
 if __name__ == "__main__":
     config = configparser.ConfigParser()
     config.read("connector.conf")
+    config = config["lero"]
 
     port = int(config["port"])
     listen_on = str(config["host"])
 
-    model = LeroModelPairWise(None, model_path=str(config["modelpath"]))
-    print("Loaded model from ", config["modelpath"])
+    model = LeroModelPairWise(None, model_path=str(config["modelpath"])) if "modelpath" in config else None
+    print("Loaded model from ", config["modelpath"] if "modelpath" in config else None)
 
     print(f"Listening on {listen_on} port {port}")
 
     with socketserver.TCPServer((listen_on, port), PostgresHandler) as server:
         server.model = model
-        server.feature_generator = model.feature_generator
+        server.feature_generator = model.feature_generator if "modelpath" in config else None
         server.opt_state_dict = {}
 
         server.best_plan = None

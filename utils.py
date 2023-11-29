@@ -39,11 +39,11 @@ def execute_query(query, run_args):
                 if run_args:
                     for arg in run_args:
                         cur.execute(arg)
-            cur.execute("SET statement_timeout TO " + str(TIMEOUT))
+                cur.execute("SET statement_timeout TO " + str(TIMEOUT))
 
-            print(query)
-            cur.execute(query)
-            result = cur.fetchall()
+                print(query)
+                cur.execute(query)
+                result = cur.fetchall()
     except Exception as e:
         print(f"[ERROR]: {e}")
 
@@ -90,7 +90,7 @@ def write_generated_plans(query, encoded_q_str, plan_str, encoded_plan_str, late
     print(f"Generated plan(s) saved at: {generated_plans_path}")
 
 
-def do_run_query(sql, query_name, run_args, latency_file, write_latency_file=True, algo=""):
+def execute_queries_on_postgres(sql, query_name, run_args, latency_file, write_latency_file=True, algo=""):
     sql = sql.strip().replace("\n", " ").replace("\t", " ")
 
     plan_json = explain_query(sql, run_args, "EXPLAIN (COSTS FALSE, FORMAT JSON, SUMMARY) ")
@@ -123,7 +123,7 @@ def do_run_query(sql, query_name, run_args, latency_file, write_latency_file=Tru
                 fcntl.flock(file, fcntl.LOCK_UN)
 
         print(query_name, latency_json[0]["Execution Time"], flush=True)
-        print("----" * 25)
+        print(query_name + " ----" * 25)
     except Exception as e:
         with open(latency_file + "_error", "a+") as file:
             fcntl.flock(file, fcntl.LOCK_EX)

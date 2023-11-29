@@ -3,6 +3,7 @@ import configparser
 
 config = configparser.ConfigParser()
 config.read("lero.conf")
+config = config["lero"]
 
 PORT = int(config.get("PORT", "5432"))
 HOST = config.get("HOST", "localhost")
