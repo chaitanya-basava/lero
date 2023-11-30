@@ -143,8 +143,3 @@ if __name__ == "__main__":
 
     LeroExecutor(read_queries(args.query_path), args.query_num_per_chunk, args.output_query_latency_file,
                  read_queries(args.test_query_path), args.model_prefix, args.topK).start(args.pool_num)
-
-# python train_model.py --query_path stats_train.txt  --algo pg --output_query_latency_file pg_stats_train.log
-# python train_model.py --query_path stats_test.txt  --algo pg --output_query_latency_file pg_stats_test.log
-
-# python train_model.py --query_path stats_train.txt --test_query_path stats_test.txt --algo lero --query_num_per_chunk 20 --output_query_latency_file lero_stats.log --model_prefix stats_model --topK 3
