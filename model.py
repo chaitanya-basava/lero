@@ -59,7 +59,7 @@ def generate_network(input_feature_dim):
 
 class LeroModelPairWise(nn.Module):
     def __init__(self, feature_generator: Union[Preprocessor, None],
-                 model_path: str = None, batch_size: int = 64, num_epochs: int = 100):
+                 model_path: str = None, batch_size: int = 64, num_epochs: int = 1000):
         super().__init__()
         self.net = None
         self.batch_size = batch_size

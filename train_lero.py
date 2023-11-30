@@ -1,14 +1,17 @@
-import argparse
-
 import os
 import json
 import socket
+import warnings
+import argparse
 from multiprocessing import Pool
 from collections import defaultdict
 
 from helper import run
 from utils import execute_queries_on_postgres, read_queries
 from config import SEP, LOG_PATH, LERO_SERVER_PORT, LERO_SERVER_HOST, LERO_SERVER_PATH, LERO_DUMP_CARD_FILE, PG_DB_PATH
+
+
+warnings.filterwarnings("ignore")
 
 
 class CardinalityGuidedEntity:
@@ -80,6 +83,8 @@ class LeroExecutor:
             with Pool(pool_num) as pool:
                 for query_name, query in chunk:
                     self.run_pairwise(query, query_name, pool)
+                pool.close()
+                pool.join()
 
             model_name = f"{self.model_prefix}_{str(c_idx)}"
             self.retrain(model_name)
