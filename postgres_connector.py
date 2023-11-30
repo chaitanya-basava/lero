@@ -21,26 +21,24 @@ class PostgresHandler(socketserver.BaseRequestHandler):
                 json_msg = str_buf[:end_loc].strip()
                 str_buf = str_buf[end_loc + len("*LERO_END*"):]
                 if json_msg:
-                    try:
-                        json_obj = json.loads(json_msg)
-                        msg_type = json_obj['msg_type']
-                        reply_msg = {}
-                        try:
-                            handler_method = getattr(self, f"_handle_{msg_type}", None)
-                            if handler_method:
-                                handler_method(json_obj, reply_msg)
-                                reply_msg['msg_type'] = "succ"
-                            else:
-                                raise Exception(f"[{msg_type}] not known")
-                        except Exception as e:
-                            reply_msg['msg_type'] = "error"
-                            reply_msg['error'] = str(e)
-                            print(e)
+                    # try:
+                    json_obj = json.loads(json_msg)
+                    msg_type = json_obj['msg_type']
+                    reply_msg = {}
+                    handler_method = getattr(self, f"_handle_{msg_type}", None)
+                    if handler_method:
+                        handler_method(json_obj, reply_msg)
+                        reply_msg['msg_type'] = "succ"
+                    else:
+                        raise Exception(f"[{msg_type}] not known")
 
-                        self.request.sendall(bytes(json.dumps(reply_msg), "utf-8"))
-                        self.request.close()
-                    except Exception as e:
-                        print(str(e))
+                    # except Exception as e:
+                    #     print(json.loads(json_msg))
+                    #     reply_msg = {'msg_type': "error", 'error': str(e)}
+                    #     print(str(e))
+
+                    self.request.sendall(bytes(json.dumps(reply_msg), "utf-8"))
+                    self.request.close()
 
                     break
 
@@ -67,7 +65,7 @@ class PostgresHandler(socketserver.BaseRequestHandler):
         reply_msg['finish'] = 1 if finish else 0
 
     def _handle_predict(self, json_obj, reply_msg):
-        local_features, _ = self.server.feature_generator.transform([json.dumps(json_obj)])
+        local_features, _ = self.server.feature_generator.transform([json_obj])
         reply_msg['latency'] = self.server.model(local_features)[0][0]
 
     def _handle_join_card(self, json_obj, reply_msg):

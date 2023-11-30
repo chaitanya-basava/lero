@@ -34,4 +34,6 @@ if __name__ == "__main__":
     if not os.path.exists(LOG_PATH):
         os.makedirs(LOG_PATH)
 
-    PGExecutor(read_queries(args.query_path), args.output_query_latency_file).start(args.pool_num)
+    queries = read_queries(args.query_path)
+    queries = queries[:100] if "train" in args.query_path else queries
+    PGExecutor(queries, args.output_query_latency_file).start(args.pool_num)

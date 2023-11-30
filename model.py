@@ -1,5 +1,4 @@
 import os
-import joblib
 import pickle
 from time import time
 from typing import Union
@@ -59,7 +58,7 @@ def generate_network(input_feature_dim):
 
 class LeroModelPairWise(nn.Module):
     def __init__(self, feature_generator: Union[Preprocessor, None],
-                 model_path: str = None, batch_size: int = 64, num_epochs: int = 1000):
+                 model_path: str = None, batch_size: int = 64, num_epochs: int = 1):
         super().__init__()
         self.net = None
         self.batch_size = batch_size
@@ -90,7 +89,7 @@ class LeroModelPairWise(nn.Module):
         sigmoid = nn.Sigmoid()
         start_time = time()
         for epoch in range(self.num_epochs):
-            losses = 0
+            losses, itr = 0, 0
             for x1, x2, label in dataset:
                 prob_y = sigmoid(self.net(build_trees(x1)) - self.net(build_trees(x2)))
                 label_y = torch.tensor(np.array(label).reshape(-1, 1))
@@ -101,6 +100,11 @@ class LeroModelPairWise(nn.Module):
                 optimizer.zero_grad()
                 loss.backward()
                 optimizer.step()
+
+                if itr % 100 == 0:
+                    print("Epoch", epoch, "Iteration", itr, "loss:", loss.item())
+
+                itr += 1
 
             losses /= len(dataset)
 

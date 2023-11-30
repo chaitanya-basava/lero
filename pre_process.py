@@ -15,79 +15,108 @@ def json_str_to_json_obj(json_data) -> dict:
 
 
 class Preprocessor:
-    def __init__(self) -> None:
+    def __init__(self):
         self.normalizer = None
         self.feature_parser = None
-        self.input_feature_dim = None
 
     def fit(self, trees):
-        def compute_min_max(x):
-            x = np.log(np.array(x) + 1)
-            return np.min(x), np.max(x)
+        exec_times = []
+        startup_costs = []
+        total_costs = []
+        rows = []
+        input_relations = set()
+        rel_type = set()
 
-        exec_times, startup_costs, total_costs, rows, input_relations, rel_types = [], [], [], [], set(), set()
+        def recurse(n):
+            startup_costs.append(n["Startup Cost"])
+            total_costs.append(n["Total Cost"])
+            rows.append(n["Plan Rows"])
+            rel_type.add(n["Node Type"])
+            if "Relation Name" in n:
+                # base table
+                input_relations.add(n["Relation Name"])
 
-        def parse_node(node):
-            startup_costs.append(node.get("Startup Cost"))
-            total_costs.append(node.get("Total Cost"))
-            rows.append(node.get("Plan Rows"))
-            rel_types.add(node.get("Node Type"))
-            if "Relation Name" in node:
-                input_relations.add(node.get("Relation Name"))
-
-            for child in node.get("Plans", []):
-                parse_node(child)
+            if "Plans" in n:
+                for child in n["Plans"]:
+                    recurse(child)
 
         for tree in trees:
             json_obj = json_str_to_json_obj(tree)
             if "Execution Time" in json_obj:
-                exec_times.append(float(json_obj.get("Execution Time")))
-            parse_node(json_obj.get("Plan"))
+                exec_times.append(float(json_obj["Execution Time"]))
+            recurse(json_obj["Plan"])
 
-        mins, maxs = {}, {}
-        for name, values in [("Startup Cost", startup_costs), ("Total Cost", total_costs),
-                             ("Plan Rows", rows), ("Execution Time", exec_times)]:
-            if name == "Execution Time" and len(values) == 0:
-                continue
-            mins[name], maxs[name] = compute_min_max(values)
+        startup_costs = np.array(startup_costs)
+        total_costs = np.array(total_costs)
+        rows = np.array(rows)
 
-        self.normalizer = Normalizer(mins, maxs)
-        self.feature_parser = FeatureParser(self.normalizer, list(input_relations))
+        startup_costs = np.log(startup_costs + 1)
+        total_costs = np.log(total_costs + 1)
+        rows = np.log(rows + 1)
+
+        startup_costs_min = np.min(startup_costs)
+        startup_costs_max = np.max(startup_costs)
+        total_costs_min = np.min(total_costs)
+        total_costs_max = np.max(total_costs)
+        rows_min = np.min(rows)
+        rows_max = np.max(rows)
+
+        print("RelType : ", rel_type)
+
+        if len(exec_times) > 0:
+            exec_times = np.array(exec_times)
+            exec_times = np.log(exec_times + 1)
+            exec_times_min = np.min(exec_times)
+            exec_times_max = np.max(exec_times)
+            self.normalizer = Normalizer(
+                {"Execution Time": exec_times_min, "Startup Cost": startup_costs_min,
+                 "Total Cost": total_costs_min, "Plan Rows": rows_min},
+                {"Execution Time": exec_times_max, "Startup Cost": startup_costs_max,
+                 "Total Cost": total_costs_max, "Plan Rows": rows_max})
+        else:
+            self.normalizer = Normalizer(
+                {"Startup Cost": startup_costs_min,
+                 "Total Cost": total_costs_min, "Plan Rows": rows_min},
+                {"Startup Cost": startup_costs_max,
+                 "Total Cost": total_costs_max, "Plan Rows": rows_max})
+        self.feature_parser = AnalyzeJsonParser(self.normalizer, list(input_relations))
 
     def transform(self, trees):
-        local_features, labels = [], []
-
+        local_features = []
+        y = []
         for tree in trees:
             json_obj = json_str_to_json_obj(tree)
-            plan = json_obj["Plan"]
-            if not isinstance(plan, dict):
-                plan = json.loads(plan)
-                json_obj["Plan"] = plan
+            if not isinstance(json_obj["Plan"], dict):
+                json_obj["Plan"] = json.loads(json_obj["Plan"])
+            local_feature = self.feature_parser.extract_feature(
+                json_obj["Plan"])
+            local_features.append(local_feature)
 
-            local_features.append(self.feature_parser.extract_feature(plan))
-
-            exec_time = json_obj.get("Execution Time")
-            if exec_time is not None:
-                exec_time = float(exec_time)
+            if "Execution Time" in json_obj:
+                label = float(json_obj["Execution Time"])
                 if self.normalizer.contains("Execution Time"):
-                    exec_time = self.normalizer.norm(exec_time, "Execution Time")
-                labels.append(exec_time)
+                    label = self.normalizer.norm(label, "Execution Time")
+                y.append(label)
             else:
-                labels.append(None)
-
-        return local_features, labels
+                y.append(None)
+        return local_features, y
 
 
 class PlanNode:
-    def __init__(self, node_type: np.ndarray,
+    def __init__(self, node_type: np.ndarray, startup_cost: float, total_cost: float,
                  rows: float, width: int,
-                 left_child, right_child,
-                 input_tables: list, encoded_input_tables: list):
+                 left, right,
+                 startup_time: float, total_time: float,
+                 input_tables: list, encoded_input_tables: list) -> None:
         self.node_type = node_type
+        self.startup_cost = startup_cost
+        self.total_cost = total_cost
         self.rows = rows
         self.width = width
-        self.left_child: PlanNode = left_child
-        self.right_child: PlanNode = right_child
+        self.left = left
+        self.right = right
+        self.startup_time = startup_time
+        self.total_time = total_time
         self.input_tables = input_tables
         self.encoded_input_tables = encoded_input_tables
 
@@ -95,88 +124,97 @@ class PlanNode:
         return np.hstack((self.node_type, np.array(self.encoded_input_tables), np.array([self.width, self.rows])))
 
     def get_left_child(self):
-        return self.left_child
+        return self.left
 
     def get_right_child(self):
-        return self.right_child
+        return self.right
 
-    def get_subtrees(self):
-        subtrees = [self]
-        if self.left_child is not None:
-            subtrees.extend(self.left_child.get_subtrees())
-        if self.right_child is not None:
-            subtrees.extend(self.right_child.get_subtrees())
-        return subtrees
+    def subtrees(self):
+        trees = [self]
+        if self.left is not None:
+            trees += self.left.subtrees()
+        if self.right is not None:
+            trees += self.right.subtrees()
+        return trees
 
 
 class Normalizer:
-    def __init__(self, mins: dict, maxs: dict):
-        self.min_vals = mins
-        self.max_vals = maxs
+    def __init__(self, mins: dict, maxs: dict) -> None:
+        self._mins = mins
+        self._maxs = maxs
 
-    def _validate_feature_name(self, feature_name):
-        if not self.contains(feature_name):
-            raise ValueError(f"Feature '{feature_name}' is not present in the normalizer.")
+    def norm(self, x, name):
+        if name not in self._mins or name not in self._maxs:
+            raise Exception("fail to normalize " + name)
 
-    def norm(self, x, feature_name):
-        self._validate_feature_name(feature_name)
-        min_val = self.min_vals[feature_name]
-        max_val = self.min_vals[feature_name]
-        return (np.log(x + 1) - min_val) / (max_val - min_val)
+        return (np.log(x + 1) - self._mins[name]) / (self._maxs[name] - self._mins[name])
 
-    def contains(self, feature_name):
-        return feature_name in self.min_vals and feature_name in self.max_vals
+    def inverse_norm(self, x, name):
+        if name not in self._mins or name not in self._maxs:
+            raise Exception("fail to inversely normalize " + name)
+
+        return np.exp((x * (self._maxs[name] - self._mins[name])) + self._mins[name]) - 1
+
+    def contains(self, name):
+        return name in self._mins and name in self._maxs
 
 
-class FeatureParser:
-    def __init__(self, normalizer: Normalizer, input_relations: list):
+class AnalyzeJsonParser:
+    def __init__(self, normalizer: Normalizer, input_relations: list) -> None:
         self.normalizer = normalizer
         self.input_relations = input_relations
 
-    def extract_feature(self, plan_json) -> PlanNode:
-        child_relations = []
-        left_child, right_child = self._extract_children_features(plan_json, child_relations)
+    def extract_feature(self, json_rel) -> PlanNode:
+        left = None
+        right = None
+        input_relations = []
 
-        node_type = op_to_one_hot(plan_json['Node Type'])
-        rows = self.normalizer.norm(float(plan_json['Plan Rows']), 'Plan Rows')
-        width = int(plan_json['Plan Width'])
+        if 'Plans' in json_rel:
+            children = json_rel['Plans']
+            assert len(children) <= 2 and len(children) > 0
+            left = self.extract_feature(children[0])
+            input_relations += left.input_tables
 
-        if plan_json['Node Type'] in SCAN_TYPES:
-            child_relations.extend([plan_json["Relation Name"]])
-
-        return PlanNode(node_type, rows, width, left_child, right_child,
-                        child_relations, self._encode_relation_names(child_relations))
-
-    def _extract_children_features(self, plan_json, child_relations):
-        left_child = right_child = None
-
-        if 'Plans' in plan_json:
-            assert 0 < len(plan_json['Plans']) <= 2
-            left_child = self.extract_feature(plan_json['Plans'][0])
-            child_relations.extend(left_child.input_tables)
-
-            if len(plan_json['Plans']) == 2:
-                right_child = self.extract_feature(plan_json['Plans'][1])
+            if len(children) == 2:
+                right = self.extract_feature(children[1])
+                input_relations += right.input_tables
             else:
-                right_child = PlanNode(op_to_one_hot(UNKNOWN_OP_TYPE), 0, 0,
-                                       None, None, [], self._encode_relation_names([]))
+                right = PlanNode(op_to_one_hot(UNKNOWN_OP_TYPE), 0, 0, 0, 0,
+                                 None, None, 0, 0, [], self.encode_relation_names([]))
 
-            child_relations.extend(right_child.input_tables)
+        node_type = op_to_one_hot(json_rel['Node Type'])
+        rows = self.normalizer.norm(float(json_rel['Plan Rows']), 'Plan Rows')
+        width = int(json_rel['Plan Width'])
 
-        return left_child, right_child
+        if json_rel['Node Type'] in SCAN_TYPES:
+            input_relations.append(json_rel["Relation Name"])
 
-    def _encode_relation_names(self, relation_names: list) -> list:
+        startup_time = None
+        if 'Actual Startup Time' in json_rel:
+            startup_time = float(json_rel['Actual Startup Time'])
+        total_time = None
+        if 'Actual Total Time' in json_rel:
+            total_time = float(json_rel['Actual Total Time'])
+
+        return PlanNode(node_type, None, None, rows, width, left,
+                        right, startup_time, total_time,
+                        input_relations, self.encode_relation_names(input_relations))
+
+    def encode_relation_names(self, l):
         encode_arr = np.zeros(len(self.input_relations) + 1)
 
-        for name in relation_names:
-            idx = self.input_relations.index(name) if name in self.input_relations else -1
-            encode_arr[idx] += 1
-
-        return encode_arr.tolist()
+        for name in l:
+            if name not in self.input_relations:
+                encode_arr[-1] += 1
+            else:
+                encode_arr[list(self.input_relations).index(name)] += 1
+        return encode_arr
 
 
 def op_to_one_hot(op_name):
-    one_hot = np.zeros(len(OP_TYPES))
-    index = OP_TYPES.index(op_name) if op_name in OP_TYPES else OP_TYPES.index(UNKNOWN_OP_TYPE)
-    one_hot[index] = 1
-    return one_hot
+    arr = np.zeros(len(OP_TYPES))
+    if op_name not in OP_TYPES:
+        arr[OP_TYPES.index(UNKNOWN_OP_TYPE)] = 1
+    else:
+        arr[OP_TYPES.index(op_name)] = 1
+    return arr
