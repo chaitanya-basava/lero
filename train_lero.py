@@ -86,7 +86,7 @@ class LeroExecutor:
                 pool.close()
                 pool.join()
 
-            model_name = f"{self.model_prefix}_{c_idx}"
+            model_name = f"model/{self.model_prefix}_{c_idx}"
             self.retrain(model_name)
             self.test(f"{self.output_query_latency_file}_{model_name}")
 
